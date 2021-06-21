@@ -27,10 +27,11 @@ export default function Notes() {
       .get("/notes", { withCredentials: true })
       .then((res) => {
         const data = res.data;
-        setNotes(data.notes);
+        console.log(data);
+        setNotes(data);
       })
       .catch((error) => {
-        console.log(error);
+        Swal.fire(`${error.response.data.error}`, "", "warning");
         history.push("/login");
       });
   }

@@ -55,7 +55,7 @@ export default function Login() {
             autoFocus
           />
           <input
-            type="text"
+            type="password"
             name="pwd"
             className="form-control"
             onChange={handleChange}

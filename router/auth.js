@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { User, Note } = require("../model/userSchema");
+const User = require("../model/userSchema");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const auth = require("../middlewares/authenticate");
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 const transporter = nodemailer.createTransport({
   host: "in-v3.mailjet.com",
@@ -36,14 +37,12 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Your passwords are not matched" });
     } else {
       const hashpwd = await bcrypt.hash(pwd, 12);
-      const hashcpwd = await bcrypt.hash(cpwd, 12);
-      if (hashpwd && hashcpwd) {
+      if (hashpwd) {
         const user = new User({
           fname,
           lname,
           email,
           pwd: hashpwd,
-          cpwd: hashcpwd,
         });
         await user.save();
         res.status(201).json({ msg: "User registred successfully" });
@@ -68,13 +67,20 @@ router.post("/login", async (req, res) => {
       const isPwdMatch = await bcrypt.compare(pwd, isRegistered.pwd);
 
       if (isPwdMatch) {
-        const token = await isRegistered.userAuthGenerator();
+        const token = await jwt.sign(
+          { _id: isRegistered._id },
+          process.env.SECRET
+        );
+        isRegistered.token = token;
+        const saved = await isRegistered.save();
 
         res.cookie("jwtoken", token, {
           expires: new Date(Date.now() + 3600000),
           httpOnly: true,
         });
-        return res.status(201).json({ msg: "User signed in successfully " });
+        if (saved) {
+          return res.status(201).json({ msg: "User signed in successfully " });
+        }
       } else {
         return res.status(400).json({ error: "Invalid details" });
       }
@@ -102,8 +108,10 @@ router.post("/reset", async (req, res) => {
           expiresIn: "10m",
         }
       );
-      userExist.resetToken = rsttoken;
-      userExist.save();
+      if (rsttoken) {
+        userExist.resetToken = rsttoken;
+        userExist.save();
+      }
 
       const send = await transporter.sendMail(
         {
@@ -115,13 +123,14 @@ router.post("/reset", async (req, res) => {
         <p>click on this <a href=${process.env.BASE_URL}/reset/${rsttoken}>link</a></p> to reset password.`,
         },
         (error, info) => {
+          console.log(error);
           if (!error) {
-            res.status(200).json({ msg: "okay" });
+            return res.status(200).json({ msg: "okay" });
           }
         }
       );
       if (send) {
-        res.status(200).json({ msg: "Check your email" });
+        return res.status(200).json({ msg: "Check your email" });
       }
     } else {
       return res.status(400).json({ error: "User not exist" });
@@ -141,7 +150,7 @@ router.get("/reset/:token", async (req, res) => {
     if (user) {
       res.status(200).redirect(`/chgpwd/${token}`);
     } else {
-      res.status(400).json({ error: "Invalid details" });
+      res.status(400).redirect("/");
     }
   } catch (error) {
     console.log(error);
@@ -159,10 +168,10 @@ router.post("/chgpwd/:token", async (req, res) => {
     const user = await User.findOne({ resetToken: token });
     if (user) {
       const hashpwd = await bcrypt.hash(pwd.newpwd, 12);
-      const hashcpwd = await bcrypt.hash(pwd.newcpwd, 12);
-      if (hashpwd && hashcpwd) {
+
+      if (hashpwd) {
         user.pwd = hashpwd;
-        user.cpwd = hashcpwd;
+
         user.resetToken = undefined;
         await user.save();
 
@@ -183,9 +192,20 @@ router.get("/inputnote", auth, (req, res) => {
   res.send(req.user);
 });
 
+const encrypt = (val) => {
+  cipher = crypto.createCipheriv(
+    "aes-256-cbc",
+    process.env.KEY,
+    process.env.IV
+  );
+  var encrypted = cipher.update(val, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return val.length + "," + encrypted;
+};
+
 router.post("/inputnote", auth, async (req, res) => {
-  const { title, content } = req.body;
-  if (!title || !content) {
+  let note = req.body;
+  if (!note.title || !note.content) {
     return res.status(422).json({ error: "Please fill all the fields" });
   }
   try {
@@ -193,12 +213,12 @@ router.post("/inputnote", auth, async (req, res) => {
     if (!exist) {
       res.status(400).json({ msg: "Something went wrong" });
     } else {
-      const newNote = new Note({ title, content });
-      await newNote.save();
-      console.log(newNote);
-      exist.notes.push(newNote);
+      note.title = encrypt(note.title);
+      note.content = encrypt(note.content);
+
+      exist.notes.push(note);
       await exist.save();
-      res.status(201).json({ msg: "Note saved successfully" });
+      return res.status(201).json({ msg: "Note saved successfully" });
     }
   } catch (error) {
     console.log(error);
@@ -207,8 +227,31 @@ router.post("/inputnote", auth, async (req, res) => {
 
 //Notes route
 
+const decrypt = (val) => {
+  decipher = crypto.createDecipheriv(
+    "aes-256-cbc",
+    process.env.KEY,
+    process.env.IV
+  );
+  decipher.setAutoPadding(false);
+  var decrypted = decipher.update(val, "hex", "utf8");
+  return (decrypted += decipher.final("utf8"));
+};
+
 router.get("/notes", auth, (req, res) => {
-  res.send(req.user);
+  const notes = req.user.notes.map((notesItem) => {
+    const encryptedTitle = notesItem.title.split(",");
+    decrypted = decrypt(encryptedTitle[1].toString());
+    notesItem.title = decrypted.slice(0, encryptedTitle[0]);
+
+    const encryptedContent = notesItem.content.split(",");
+    decrypted = decrypt(encryptedContent[1].toString());
+    notesItem.content = decrypted.slice(0, encryptedContent[0]);
+
+    return notesItem;
+  });
+
+  res.send(notes);
 });
 
 router.post("/notes", (req, response) => {

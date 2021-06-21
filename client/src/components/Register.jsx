@@ -65,7 +65,7 @@ export default function Register() {
             value={user.email}
           />
           <input
-            type="text"
+            type="password"
             name="pwd"
             className="form-control"
             onChange={handleChange}
@@ -73,7 +73,7 @@ export default function Register() {
             value={user.pwd}
           />
           <input
-            type="text"
+            type="password"
             name="cpwd"
             className="form-control"
             onChange={handleChange}

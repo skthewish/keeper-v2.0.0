@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { User } = require("../model/userSchema");
+const User = require("../model/userSchema");
 
 const Authenticate = async (req, res, next) => {
   try {
@@ -9,7 +9,7 @@ const Authenticate = async (req, res, next) => {
 
     const verifiedUser = await User.findOne({
       _id: verifyToken._id,
-      "tokens.token": token,
+      token: token,
     });
 
     if (!verifiedUser) {
@@ -19,7 +19,7 @@ const Authenticate = async (req, res, next) => {
     req.user = verifiedUser;
     next();
   } catch (error) {
-    res.status(401).send("Unauthenticated user");
+    res.status(401).json({ error: "Unauthenticated user" });
   }
 };
 

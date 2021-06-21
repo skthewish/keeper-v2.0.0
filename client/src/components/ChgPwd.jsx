@@ -39,7 +39,7 @@ export default function ChgPwd() {
       <div className="center-container input-div w-25 text-center">
         <form onSubmit={submitForm}>
           <input
-            type="txt"
+            type="password"
             name="newpwd"
             className="form-control"
             onChange={handleChange}
@@ -48,7 +48,7 @@ export default function ChgPwd() {
             autoFocus
           />
           <input
-            type="text"
+            type="password"
             name="newcpwd"
             className="form-control"
             onChange={handleChange}
